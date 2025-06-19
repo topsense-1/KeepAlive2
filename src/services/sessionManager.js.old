@@ -1,0 +1,101 @@
+// src/services/sessionManager.js
+// Session management utilities for DB2REST
+
+// Session management constants
+const SESSION_KEY = 'keepalive_session'
+const USER_KEY = 'keepalive_user'
+const TOKEN_KEY = 'keepalive_token'
+
+// Session utilities
+export const sessionUtils = {
+  // Generate a simple session token
+  generateToken() {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36)
+  },
+
+  // Save session to localStorage
+  saveSession(user, token = null) {
+    const sessionToken = token || this.generateToken()
+    const session = {
+      user,
+      token: sessionToken,
+      expires_at: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+      created_at: Date.now(),
+    }
+
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    localStorage.setItem(USER_KEY, user.id)
+    localStorage.setItem(TOKEN_KEY, sessionToken)
+
+    return session
+  },
+
+  // Get session from localStorage
+  getSession() {
+    try {
+      const sessionData = localStorage.getItem(SESSION_KEY)
+      if (!sessionData) return null
+
+      const session = JSON.parse(sessionData)
+
+      // Check if session is expired
+      if (Date.now() > session.expires_at) {
+        this.clearSession()
+        return null
+      }
+
+      return session
+    } catch (error) {
+      console.error('Error getting session:', error)
+      this.clearSession()
+      return null
+    }
+  },
+
+  // Clear session from localStorage
+  clearSession() {
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(USER_KEY)
+    localStorage.removeItem(TOKEN_KEY)
+  },
+
+  // Check if session is valid
+  isSessionValid() {
+    const session = this.getSession()
+    return session !== null
+  },
+
+  // Refresh session expiry
+  refreshSession() {
+    const session = this.getSession()
+    if (session) {
+      session.expires_at = Date.now() + 24 * 60 * 60 * 1000
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+      return session
+    }
+    return null
+  },
+
+  // Get current user from session
+  getCurrentUser() {
+    const session = this.getSession()
+    return session ? session.user : null
+  },
+
+  // Get current token from session
+  getCurrentToken() {
+    const session = this.getSession()
+    return session ? session.token : null
+  },
+
+  // Update user data in session
+  updateUserInSession(userData) {
+    const session = this.getSession()
+    if (session) {
+      session.user = { ...session.user, ...userData }
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+      return session
+    }
+    return null
+  },
+}

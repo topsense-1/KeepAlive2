@@ -1,0 +1,448 @@
+/* src/css/user-management.css */
+/* Enhanced styles for user management interface */
+
+/* Main user management page */
+.user-management-page {
+  padding: 1rem;
+}
+
+/* User table styles */
+.user-table {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.user-table .q-table__top {
+  background-color: #f5f5f5;
+  padding: 1rem;
+}
+
+.user-table .q-table__middle {
+  background-color: white;
+}
+
+/* Deleted user row styling */
+.user-table .q-tr.bg-red-1 {
+  background-color: #ffebee !important;
+  opacity: 0.7;
+}
+
+.user-table .q-tr.bg-red-1:hover {
+  background-color: #ffcdd2 !important;
+}
+
+/* User avatar styling */
+.user-avatar {
+  border: 2px solid #e0e0e0;
+  transition: border-color 0.3s ease;
+}
+
+.user-avatar:hover {
+  border-color: #1976d2;
+}
+
+/* Action buttons */
+.action-buttons {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-buttons .q-btn {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+/* Role badges */
+.role-badge {
+  font-weight: 500;
+  font-size: 0.75rem;
+  border-radius: 12px;
+  padding: 0.25rem 0.75rem;
+}
+
+.role-badge.system-admin {
+  background-color: #9c27b0;
+  color: white;
+}
+
+.role-badge.house-manager {
+  background-color: #2196f3;
+  color: white;
+}
+
+.role-badge.user-manager {
+  background-color: #009688;
+  color: white;
+}
+
+.role-badge.caregiver {
+  background-color: #ff9800;
+  color: white;
+}
+
+.role-badge.family-manager {
+  background-color: #4caf50;
+  color: white;
+}
+
+.role-badge.family-member {
+  background-color: #3f51b5;
+  color: white;
+}
+
+/* Status badges */
+.status-badge {
+  font-weight: 500;
+  font-size: 0.75rem;
+  border-radius: 12px;
+  padding: 0.25rem 0.75rem;
+}
+
+.status-badge.active {
+  background-color: #4caf50;
+  color: white;
+}
+
+.status-badge.pending {
+  background-color: #ff9800;
+  color: white;
+}
+
+.status-badge.deleted {
+  background-color: #f44336;
+  color: white;
+}
+
+/* House assignment chips */
+.house-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  max-width: 200px;
+}
+
+.house-chip {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 8px;
+  background-color: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #bbdefb;
+}
+
+.house-chip.all-houses {
+  background-color: #f3e5f5;
+  color: #7b1fa2;
+  border: 1px solid #ce93d8;
+  font-weight: 500;
+}
+
+/* Dialog styles */
+.user-dialog {
+  min-width: 600px;
+  max-width: 800px;
+}
+
+.user-dialog .q-card-section {
+  padding: 1.5rem;
+}
+
+.user-dialog .q-card-actions {
+  padding: 1rem 1.5rem;
+  background-color: #fafafa;
+}
+
+/* Form fields */
+.user-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.user-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.user-form .form-section {
+  margin-bottom: 1.5rem;
+}
+
+.user-form .form-section-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #424242;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+/* Password section */
+.password-section {
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.password-section .section-title {
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+  color: #495057;
+}
+
+.password-generator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Validation styles */
+.field-error {
+  border-color: #f44336 !important;
+}
+
+.field-error .q-field__bottom {
+  color: #f44336;
+}
+
+.field-success {
+  border-color: #4caf50 !important;
+}
+
+/* Search and filter section */
+.search-filters {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.search-input {
+  min-width: 250px;
+}
+
+.filter-select {
+  min-width: 150px;
+}
+
+/* Statistics cards */
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.stat-card .stat-number {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #1976d2;
+  margin-bottom: 0.5rem;
+}
+
+.stat-card .stat-label {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 500;
+}
+
+/* Bulk operations */
+.bulk-operations {
+  background-color: #e3f2fd;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border: 1px solid #bbdefb;
+}
+
+.bulk-operations .bulk-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.bulk-operations .selected-count {
+  font-weight: 500;
+  color: #1976d2;
+  margin-right: 1rem;
+}
+
+/* Loading and empty states */
+.loading-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 3rem;
+  color: #666;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
+}
+
+.empty-state .empty-icon {
+  font-size: 4rem;
+  color: #ccc;
+  margin-bottom: 1rem;
+}
+
+.empty-state .empty-title {
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: #424242;
+}
+
+.empty-state .empty-description {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 1.5rem;
+}
+
+/* Confirmation dialogs */
+.confirmation-dialog {
+  max-width: 500px;
+}
+
+.confirmation-dialog .dialog-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.confirmation-dialog.delete-dialog .dialog-icon {
+  color: #f44336;
+}
+
+.confirmation-dialog.restore-dialog .dialog-icon {
+  color: #4caf50;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .user-dialog {
+    min-width: 95vw;
+    max-width: 95vw;
+  }
+
+  .user-form .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .search-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+  }
+
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .bulk-operations .bulk-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 480px) {
+  .house-chips {
+    max-width: 150px;
+  }
+
+  .user-table .q-td {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .action-buttons .q-btn {
+    min-width: 28px;
+    min-height: 28px;
+  }
+}
+
+/* Animation and transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(20px);
+}
+
+/* Dark mode support */
+body.body--dark .user-table {
+  background-color: #1e1e1e;
+}
+
+body.body--dark .user-table .q-table__top {
+  background-color: #2d2d2d;
+}
+
+body.body--dark .stat-card {
+  background-color: #2d2d2d;
+  color: #e0e0e0;
+}
+
+body.body--dark .password-section {
+  background-color: #2d2d2d;
+  border-color: #404040;
+}
+
+body.body--dark .search-filters {
+  background-color: #2d2d2d;
+}
+
+body.body--dark .bulk-operations {
+  background-color: #2d2d2d;
+  border-color: #404040;
+}
+
+/* Print styles */
+@media print {
+  .action-buttons,
+  .search-filters,
+  .bulk-operations,
+  .q-table__top {
+    display: none !important;
+  }
+
+  .user-table {
+    box-shadow: none;
+  }
+
+  .q-tr.bg-red-1 {
+    background-color: #f5f5f5 !important;
+  }
+}

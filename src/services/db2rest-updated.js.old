@@ -1,0 +1,1019 @@
+// src/services/db2rest.js
+import { Notify } from 'quasar'
+import { sessionUtils } from './sessionManager.js'
+
+const DB_BASE_URL = '/api'
+
+// Helper function for making API calls
+const sendCommand = async (table, params = '', successMessage = null, errorMessage = null) => {
+  try {
+    const url = params
+      ? `${DB_BASE_URL}/${encodeURIComponent(table)}?${params}`
+      : `${DB_BASE_URL}/${encodeURIComponent(table)}`
+
+    console.log('DB2REST API call:', url)
+
+    const response = await fetch(url)
+
+    if (!response.ok) {
+      if (errorMessage) {
+        Notify.create({ message: errorMessage, color: 'negative' })
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    if (successMessage) {
+      Notify.create({ message: successMessage, color: 'positive' })
+    }
+
+    const result = await response.json()
+    return result
+  } catch (error) {
+    if (errorMessage) {
+      Notify.create({ message: errorMessage, color: 'negative' })
+    }
+    console.error('DB2REST API error:', error)
+    throw error
+  }
+}
+
+// POST request helper
+const sendPostCommand = async (table, data, successMessage = null, errorMessage = null) => {
+  try {
+    const url = `${DB_BASE_URL}/${encodeURIComponent(table)}`
+
+    console.log('DB2REST POST call:', url, data)
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      if (errorMessage) {
+        Notify.create({ message: errorMessage, color: 'negative' })
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    if (successMessage) {
+      Notify.create({ message: successMessage, color: 'positive' })
+    }
+
+    const result = await response.json()
+    return result
+  } catch (error) {
+    if (errorMessage) {
+      Notify.create({ message: errorMessage, color: 'negative' })
+    }
+    console.error('DB2REST POST error:', error)
+    throw error
+  }
+}
+
+// PUT request helper
+const sendPutCommand = async (table, id, data, successMessage = null, errorMessage = null) => {
+  try {
+    const url = `${DB_BASE_URL}/${encodeURIComponent(table)}?filter=id==${id}`
+
+    console.log('DB2REST PATCH call:', url, data)
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      if (errorMessage) {
+        Notify.create({ message: errorMessage, color: 'negative' })
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    if (successMessage) {
+      Notify.create({ message: successMessage, color: 'positive' })
+    }
+
+    const result = await response.json()
+    return result
+  } catch (error) {
+    if (errorMessage) {
+      Notify.create({ message: errorMessage, color: 'negative' })
+    }
+    console.error('DB2REST PUT error:', error)
+    throw error
+  }
+}
+
+// DELETE request helper
+const sendDeleteCommand = async (table, id, successMessage = null, errorMessage = null) => {
+  try {
+    const url = `${DB_BASE_URL}/${encodeURIComponent(table)}?filter=id==${id}`
+
+    console.log('DB2REST DELETE call:', url)
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) {
+      if (errorMessage) {
+        Notify.create({ message: errorMessage, color: 'negative' })
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    if (successMessage) {
+      Notify.create({ message: successMessage, color: 'positive' })
+    }
+
+    return true
+  } catch (error) {
+    if (errorMessage) {
+      Notify.create({ message: errorMessage, color: 'negative' })
+    }
+    console.error('DB2REST DELETE error:', error)
+    throw error
+  }
+}
+
+// Houses API
+export const housesApi = {
+  async getAll() {
+    try {
+      const result = await sendCommand('houses')
+      return Array.isArray(result) ? result : []
+    } catch (error) {
+      console.error('Error fetching houses:', error)
+      throw error
+    }
+  },
+
+  async getById(id) {
+    try {
+      // Get house with sensors - using joins or separate calls
+      const houseResult = await sendCommand('houses', `filter=id==${id}`)
+
+      if (!Array.isArray(houseResult) || houseResult.length === 0) {
+        throw new Error('House not found')
+      }
+
+      const house = houseResult[0]
+
+      // Get sensors for this house
+      const sensorsResult = await sendCommand('sensors', `filter=house_id==${id}`)
+      house.sensors = Array.isArray(sensorsResult) ? sensorsResult : []
+
+      return house
+    } catch (error) {
+      console.error('Error fetching house by ID:', error)
+      throw error
+    }
+  },
+
+  async create(house) {
+    try {
+      const result = await sendPostCommand('houses', house)
+      return result
+    } catch (error) {
+      console.error('Error creating house:', error)
+      throw error
+    }
+  },
+
+  async update(id, house) {
+    try {
+      const result = await sendPutCommand('houses', id, house)
+      return result
+    } catch (error) {
+      console.error('Error updating house:', error)
+      throw error
+    }
+  },
+
+  async delete(id) {
+    try {
+      await sendDeleteCommand('houses', id)
+      return true
+    } catch (error) {
+      console.error('Error deleting house:', error)
+      throw error
+    }
+  },
+}
+
+// Sensors API
+export const sensorsApi = {
+  async getByHouseId(houseId) {
+    try {
+      const result = await sendCommand('sensors', `filter=house_id==${houseId}`)
+
+      if (!Array.isArray(result)) {
+        return []
+      }
+
+      // Transform the data to match the expected format
+      const transformedSensors = []
+
+      for (const sensor of result) {
+        let transformedSensor = { ...sensor }
+
+        // Get sensor type name if type_id exists
+        if (sensor.type_id) {
+          try {
+            const typeResult = await sendCommand('sensors_type', `filter=id==${sensor.type_id}`)
+            if (Array.isArray(typeResult) && typeResult.length > 0) {
+              transformedSensor.type = typeResult[0].name
+              transformedSensor.sensor_type = typeResult[0]
+            }
+          } catch (error) {
+            console.warn('Error fetching sensor type:', error)
+            transformedSensor.type = 'unknown'
+          }
+        } else {
+          transformedSensor.type = 'unknown'
+        }
+
+        // Get sensor location name if location_id exists
+        if (sensor.location_id) {
+          try {
+            const locationResult = await sendCommand(
+              'sensors_location',
+              `filter=id==${sensor.location_id}`,
+            )
+            if (Array.isArray(locationResult) && locationResult.length > 0) {
+              transformedSensor.location = locationResult[0].name
+              transformedSensor.sensor_location = locationResult[0]
+            }
+          } catch (error) {
+            console.warn('Error fetching sensor location:', error)
+            transformedSensor.location = 'unknown'
+          }
+        } else {
+          transformedSensor.location = 'unknown'
+        }
+
+        transformedSensors.push(transformedSensor)
+      }
+
+      return transformedSensors
+    } catch (error) {
+      console.error('Error fetching sensors by house ID:', error)
+      throw error
+    }
+  },
+
+  async getSensorTypes() {
+    try {
+      const result = await sendCommand('sensors_type')
+      return Array.isArray(result) ? result : []
+    } catch (error) {
+      console.error('Error fetching sensor types:', error)
+      throw error
+    }
+  },
+
+  async getSensorLocations() {
+    try {
+      const result = await sendCommand('sensors_location')
+      return Array.isArray(result) ? result : []
+    } catch (error) {
+      console.error('Error fetching sensor locations:', error)
+      throw error
+    }
+  },
+
+  async create(sensor) {
+    try {
+      // Validate required fields
+      if (!sensor.house_id) {
+        throw new Error('Sensor must have a house_id')
+      }
+
+      // Create clean sensor object
+      const sensorData = {
+        house_id: sensor.house_id,
+        type_id: sensor.type_id || null,
+        location_id: sensor.location_id || null,
+        status: sensor.status || 'active',
+        signal_strength: sensor.signal_strength || 100,
+        battery: sensor.battery || 100,
+        position_x: sensor.position_x || null,
+        position_y: sensor.position_y || null,
+        light_level: sensor.light_level || null,
+        temperature: sensor.temperature || null,
+        humidity: sensor.humidity || null,
+        device_id: sensor.device_id || null,
+        device_name: sensor.device_name || null,
+        model_id: sensor.model_id || null,
+        manufacturer: sensor.manufacturer || null,
+        endpoint: sensor.endpoint || null,
+      }
+
+      console.log('Creating sensor with data:', sensorData)
+
+      const result = await sendPostCommand('sensors', sensorData)
+
+      // Transform the returned data to match expected format
+      let transformedSensor = { ...result }
+
+      // Get type and location names
+      if (result.type_id) {
+        try {
+          const typeResult = await sendCommand('sensors_type', `filter=id==${result.type_id}`)
+          if (Array.isArray(typeResult) && typeResult.length > 0) {
+            transformedSensor.type = typeResult[0].name
+            transformedSensor.sensor_type = typeResult[0]
+          }
+        } catch {
+          transformedSensor.type = 'unknown'
+        }
+      }
+
+      if (result.location_id) {
+        try {
+          const locationResult = await sendCommand(
+            'sensors_location',
+            `filter=id==${result.location_id}`,
+          )
+          if (Array.isArray(locationResult) && locationResult.length > 0) {
+            transformedSensor.location = locationResult[0].name
+            transformedSensor.sensor_location = locationResult[0]
+          }
+        } catch {
+          transformedSensor.location = 'unknown'
+        }
+      }
+
+      return transformedSensor
+    } catch (error) {
+      console.error('Error in sensorsApi.create:', error)
+      throw error
+    }
+  },
+
+  async update(id, sensor) {
+    try {
+      // If we have a location but not a location_id, convert it
+      if (sensor.location && !sensor.location_id) {
+        try {
+          const locationResult = await sendCommand(
+            'sensors_location',
+            `filter=name=="${sensor.location}"`,
+          )
+          if (Array.isArray(locationResult) && locationResult.length > 0) {
+            sensor.location_id = locationResult[0].id
+          } else {
+            throw new Error(`Could not find sensor location: ${sensor.location}`)
+          }
+        } catch (locationError) {
+          console.error('Error converting location to location_id:', locationError)
+          throw new Error(`Could not convert location to location_id: ${locationError.message}`)
+        }
+      }
+
+      // Create clean sensor object
+      const cleanSensor = { ...sensor }
+      delete cleanSensor.location
+      delete cleanSensor.sensor_location
+      delete cleanSensor.type
+      delete cleanSensor.sensor_type
+
+      // Update the sensor
+      await sendPutCommand('sensors', id, cleanSensor)
+
+      // Fetch the updated sensor with full data
+      const updatedResult = await sendCommand('sensors', `filter=id==${id}`)
+
+      if (!Array.isArray(updatedResult) || updatedResult.length === 0) {
+        throw new Error('Updated sensor not found')
+      }
+
+      let updatedSensor = updatedResult[0]
+
+      // Get type and location names
+      if (updatedSensor.type_id) {
+        try {
+          const typeResult = await sendCommand(
+            'sensors_type',
+            `filter=id==${updatedSensor.type_id}`,
+          )
+          if (Array.isArray(typeResult) && typeResult.length > 0) {
+            updatedSensor.type = typeResult[0].name
+            updatedSensor.sensor_type = typeResult[0]
+          }
+        } catch {
+          updatedSensor.type = 'unknown'
+        }
+      }
+
+      if (updatedSensor.location_id) {
+        try {
+          const locationResult = await sendCommand(
+            'sensors_location',
+            `filter=id==${updatedSensor.location_id}`,
+          )
+          if (Array.isArray(locationResult) && locationResult.length > 0) {
+            updatedSensor.location = locationResult[0].name
+            updatedSensor.sensor_location = locationResult[0]
+          }
+        } catch {
+          updatedSensor.location = 'unknown'
+        }
+      }
+
+      return updatedSensor
+    } catch (error) {
+      console.error('Error in sensorsApi.update:', error)
+      throw error
+    }
+  },
+
+  async updateByDeviceId(deviceId, updateData) {
+    try {
+      console.log('Updating sensor by device_id:', deviceId, updateData)
+
+      // First find the sensor by device_id
+      const sensorResult = await sendCommand('sensors', `filter=device_id=="${deviceId}"`)
+
+      if (!Array.isArray(sensorResult) || sensorResult.length === 0) {
+        console.log('No sensor found with device_id:', deviceId)
+        return null
+      }
+
+      const sensor = sensorResult[0]
+
+      // Update the sensor
+      await sendPutCommand('sensors', sensor.id, updateData)
+
+      // Get the updated sensor with full data
+      const updatedResult = await sendCommand('sensors', `filter=id==${sensor.id}`)
+      let updatedSensor = updatedResult[0]
+
+      // Get type and location names
+      if (updatedSensor.type_id) {
+        try {
+          const typeResult = await sendCommand(
+            'sensors_type',
+            `filter=id==${updatedSensor.type_id}`,
+          )
+          if (Array.isArray(typeResult) && typeResult.length > 0) {
+            updatedSensor.type = typeResult[0].name
+            updatedSensor.sensor_type = typeResult[0]
+          }
+        } catch {
+          updatedSensor.type = 'unknown'
+        }
+      }
+
+      if (updatedSensor.location_id) {
+        try {
+          const locationResult = await sendCommand(
+            'sensors_location',
+            `filter=id==${updatedSensor.location_id}`,
+          )
+          if (Array.isArray(locationResult) && locationResult.length > 0) {
+            updatedSensor.location = locationResult[0].name
+            updatedSensor.sensor_location = locationResult[0]
+          }
+        } catch {
+          updatedSensor.location = 'unknown'
+        }
+      }
+
+      console.log('Successfully updated sensor:', updatedSensor.id)
+      return updatedSensor
+    } catch (error) {
+      console.error('Error in sensorsApi.updateByDeviceId:', error)
+      throw error
+    }
+  },
+
+  async delete(id) {
+    try {
+      await sendDeleteCommand('sensors', id)
+      return true
+    } catch (error) {
+      console.error('Error deleting sensor:', error)
+      throw error
+    }
+  },
+}
+
+// Events API
+export const eventsApi = {
+  async getAll(limit = 20) {
+    try {
+      const result = await sendCommand('events', `limit=${limit}&sort=-datetime`)
+
+      if (!Array.isArray(result)) {
+        return []
+      }
+
+      // Get house information for each event
+      const eventsWithHouses = []
+      for (const event of result) {
+        let eventWithHouse = { ...event }
+
+        if (event.house_id) {
+          try {
+            const houseResult = await sendCommand(
+              'houses',
+              `filter=id==${event.house_id}&fields=id,number`,
+            )
+            if (Array.isArray(houseResult) && houseResult.length > 0) {
+              eventWithHouse.house = houseResult[0]
+            }
+          } catch (error) {
+            console.warn('Error fetching house for event:', error)
+          }
+        }
+
+        eventsWithHouses.push(eventWithHouse)
+      }
+
+      return eventsWithHouses
+    } catch (error) {
+      console.error('Error fetching events:', error)
+      throw error
+    }
+  },
+
+  async getByHouseId(houseId, limit = 20) {
+    try {
+      const result = await sendCommand(
+        'events',
+        `filter=house_id==${houseId}&limit=${limit}&sort=-datetime`,
+      )
+      return Array.isArray(result) ? result : []
+    } catch (error) {
+      console.error('Error fetching events by house ID:', error)
+      throw error
+    }
+  },
+
+  async create(event) {
+    try {
+      const result = await sendPostCommand('events', event)
+      return result
+    } catch (error) {
+      console.error('Error creating event:', error)
+      throw error
+    }
+  },
+}
+
+// Users API
+export const usersApi = {
+  async getAll() {
+    try {
+      const result = await sendCommand('user_profiles')
+
+      if (!Array.isArray(result)) {
+        return []
+      }
+
+      // Get assigned houses for each user
+      const usersWithHouses = []
+      for (const user of result) {
+        let userWithHouses = { ...user }
+
+        try {
+          // Get user house assignments
+          const userHousesResult = await sendCommand('user_houses', `filter=user_id=="${user.id}"`)
+
+          if (Array.isArray(userHousesResult)) {
+            const assignedHouses = []
+
+            for (const userHouse of userHousesResult) {
+              try {
+                const houseResult = await sendCommand(
+                  'houses',
+                  `filter=id==${userHouse.house_id}&fields=id,number`,
+                )
+                if (Array.isArray(houseResult) && houseResult.length > 0) {
+                  assignedHouses.push({
+                    id: houseResult[0].id,
+                    name: houseResult[0].number,
+                  })
+                }
+              } catch (error) {
+                console.warn('Error fetching house for user assignment:', error)
+              }
+            }
+
+            userWithHouses.assignedHouses = assignedHouses
+          } else {
+            userWithHouses.assignedHouses = []
+          }
+        } catch (error) {
+          console.warn('Error fetching user houses:', error)
+          userWithHouses.assignedHouses = []
+        }
+
+        usersWithHouses.push(userWithHouses)
+      }
+
+      return usersWithHouses
+    } catch (error) {
+      console.error('Error fetching all users:', error)
+      throw error
+    }
+  },
+
+  async getById(id) {
+    try {
+      const result = await sendCommand('user_profiles', `filter=id=="${id}"`)
+
+      if (!Array.isArray(result) || result.length === 0) {
+        throw new Error('User not found')
+      }
+
+      let user = result[0]
+
+      // Get assigned houses
+      try {
+        const userHousesResult = await sendCommand('user_houses', `filter=user_id=="${id}"`)
+
+        if (Array.isArray(userHousesResult)) {
+          const assignedHouses = []
+
+          for (const userHouse of userHousesResult) {
+            try {
+              const houseResult = await sendCommand(
+                'houses',
+                `filter=id==${userHouse.house_id}&fields=id,number`,
+              )
+              if (Array.isArray(houseResult) && houseResult.length > 0) {
+                assignedHouses.push({
+                  id: houseResult[0].id,
+                  name: houseResult[0].number,
+                })
+              }
+            } catch (error) {
+              console.warn('Error fetching house for user assignment:', error)
+            }
+          }
+
+          user.assignedHouses = assignedHouses
+        } else {
+          user.assignedHouses = []
+        }
+      } catch (error) {
+        console.warn('Error fetching user houses:', error)
+        user.assignedHouses = []
+      }
+
+      return user
+    } catch (error) {
+      console.error('Error fetching user by ID:', error)
+      throw error
+    }
+  },
+
+  async getByHouseId(houseId) {
+    try {
+      const userHousesResult = await sendCommand('user_houses', `filter=house_id==${houseId}`)
+
+      if (!Array.isArray(userHousesResult)) {
+        return []
+      }
+
+      const users = []
+      for (const userHouse of userHousesResult) {
+        try {
+          const userResult = await sendCommand('user_profiles', `filter=id=="${userHouse.user_id}"`)
+          if (Array.isArray(userResult) && userResult.length > 0) {
+            users.push(userResult[0])
+          }
+        } catch (error) {
+          console.warn('Error fetching user for house assignment:', error)
+        }
+      }
+
+      return users
+    } catch (error) {
+      console.error('Error fetching users by house ID:', error)
+      return []
+    }
+  },
+
+  async update(id, userData) {
+    try {
+      const updateData = {}
+
+      // Only update fields that are provided
+      if (userData.role !== undefined) {
+        updateData.role = userData.role
+      }
+      if (userData.full_name !== undefined) {
+        updateData.full_name = userData.full_name
+      }
+      if (userData.phone !== undefined) {
+        updateData.phone = userData.phone
+      }
+
+      updateData.updated_at = new Date().toISOString()
+
+      const result = await sendPutCommand('user_profiles', id, updateData)
+      return result
+    } catch (error) {
+      console.error('Error updating user:', error)
+      throw error
+    }
+  },
+
+  async assignHouses(userId, houseIds) {
+    try {
+      // Get default site_id and company_id from existing records
+      let siteId = null
+      let companyId = null
+
+      try {
+        const existingResult = await sendCommand('user_houses', 'limit=1')
+        if (Array.isArray(existingResult) && existingResult.length > 0) {
+          siteId = existingResult[0].site_id
+          companyId = existingResult[0].company_id
+        }
+      } catch (error) {
+        console.warn('Error getting existing user_houses record:', error)
+      }
+
+      if (!siteId || !companyId) {
+        // Get default site and company
+        try {
+          const siteResult = await sendCommand('site', 'limit=1')
+          if (Array.isArray(siteResult) && siteResult.length > 0) {
+            siteId = siteResult[0].id
+          }
+        } catch (error) {
+          console.warn('Error getting site:', error)
+        }
+
+        try {
+          const companyResult = await sendCommand('company', 'limit=1')
+          if (Array.isArray(companyResult) && companyResult.length > 0) {
+            companyId = companyResult[0].id
+          }
+        } catch (error) {
+          console.warn('Error getting company:', error)
+        }
+      }
+
+      if (!siteId || !companyId) {
+        console.warn('Missing site_id or company_id for user_houses assignment')
+        return false
+      }
+
+      // First delete existing assignments for this user
+      try {
+        const existingAssignments = await sendCommand('user_houses', `filter=user_id=="${userId}"`)
+        if (Array.isArray(existingAssignments)) {
+          for (const assignment of existingAssignments) {
+            await sendDeleteCommand('user_houses', assignment.id)
+          }
+        }
+      } catch (error) {
+        console.warn('Error deleting existing assignments:', error)
+      }
+
+      // Then create new assignments
+      if (houseIds.length > 0) {
+        for (const houseId of houseIds) {
+          const assignment = {
+            user_id: userId,
+            house_id: houseId,
+            site_id: siteId,
+            company_id: companyId,
+          }
+
+          await sendPostCommand('user_houses', assignment)
+        }
+      }
+
+      return true
+    } catch (error) {
+      console.error('Error assigning houses:', error)
+      throw error
+    }
+  },
+
+  async updatePermissions(userId, permissions) {
+    try {
+      console.log('Updating permissions for user:', userId)
+      console.log('Permissions to update:', permissions)
+
+      // Delete existing permissions for this user
+      try {
+        const existingPermissions = await sendCommand(
+          'user_permissions',
+          `filter=user_id=="${userId}"`,
+        )
+        if (Array.isArray(existingPermissions)) {
+          for (const permission of existingPermissions) {
+            await sendDeleteCommand('user_permissions', permission.id)
+          }
+        }
+      } catch (error) {
+        console.warn('Error deleting existing permissions:', error)
+      }
+
+      // Get permission IDs from the permissions table
+      const permissionData = await sendCommand('permissions')
+
+      if (!Array.isArray(permissionData)) {
+        throw new Error('Could not fetch permissions')
+      }
+
+      console.log('Available permissions from DB:', permissionData)
+
+      // Create mapping from permission names to IDs
+      const permissionMap = {}
+      permissionData.forEach((perm) => {
+        permissionMap[perm.name] = perm.id
+      })
+
+      // Filter and prepare permissions to insert
+      const permissionRecords = permissions
+        .filter((p) => {
+          const hasValidId = permissionMap[p.name]
+          if (!hasValidId) {
+            console.warn(`Permission "${p.name}" not found in database`)
+          }
+          return p.granted && hasValidId
+        })
+        .map((p) => ({
+          user_id: userId,
+          permission_id: permissionMap[p.name],
+          granted: true,
+        }))
+
+      console.log('Permission records to insert:', permissionRecords)
+
+      if (permissionRecords.length > 0) {
+        for (const permissionRecord of permissionRecords) {
+          await sendPostCommand('user_permissions', permissionRecord)
+        }
+      }
+
+      console.log('Permissions updated successfully')
+      return true
+    } catch (error) {
+      console.error('Error updating permissions:', error)
+      throw error
+    }
+  },
+}
+
+// Authentication API
+export const authApi = {
+  async login(email, password) {
+    try {
+      // Get user by email
+      const userResult = await sendCommand('users', `filter=email=="${email}"`)
+
+      if (!Array.isArray(userResult) || userResult.length === 0) {
+        throw new Error('User not found')
+      }
+
+      const user = userResult[0]
+
+      // For now, we'll do simple password comparison
+      // In production, you should use proper password hashing
+      if (user.password !== password) {
+        throw new Error('Invalid password')
+      }
+
+      // Create and save session using sessionManager
+      const session = sessionUtils.saveSession(user)
+
+      // Update last login time in database
+      try {
+        await sendPutCommand('users', user.id, {
+          last_sign_in_at: new Date().toISOString(),
+          isAuthenticated: true,
+        })
+      } catch (error) {
+        console.warn('Error updating last sign in time:', error)
+      }
+
+      // Return user data in format similar to Supabase
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          created_at: user.created_at,
+          email_confirmed_at: user.email_confirmed_at,
+          last_sign_in_at: new Date().toISOString(),
+          user_metadata: {
+            role: user.role,
+            full_name: user.full_name,
+          },
+        },
+        session: session,
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      throw error
+    }
+  },
+
+  async logout() {
+    try {
+      // Clear session using sessionManager
+      sessionUtils.clearSession()
+      return true
+    } catch (error) {
+      console.error('Logout error:', error)
+      throw error
+    }
+  },
+
+  async resetPassword(email) {
+    try {
+      // Check if user exists
+      const userResult = await sendCommand('users', `filter=email=="${email}"`)
+
+      if (!Array.isArray(userResult) || userResult.length === 0) {
+        throw new Error('User not found')
+      }
+
+      // In a real implementation, you would send a reset email
+      // For now, we'll just return success
+      console.log('Password reset requested for:', email)
+      return true
+    } catch (error) {
+      console.error('Reset password error:', error)
+      throw error
+    }
+  },
+
+  async updatePassword(userId, newPassword) {
+    try {
+      const result = await sendPutCommand('users', userId, {
+        password: newPassword,
+        updated_at: new Date().toISOString(),
+      })
+
+      return result
+    } catch (error) {
+      console.error('Update password error:', error)
+      throw error
+    }
+  },
+
+  async getCurrentUser() {
+    try {
+      // Get current user from session using sessionManager
+      const currentUser = sessionUtils.getCurrentUser()
+      return currentUser
+    } catch (error) {
+      console.error('Error getting current user:', error)
+      return null
+    }
+  },
+
+  async updateUserProfile(userData) {
+    try {
+      // Get current user
+      const currentUser = await this.getCurrentUser()
+      if (!currentUser) throw new Error('No authenticated user')
+
+      // Update user profile in database
+      const result = await sendPutCommand('users', currentUser.id, {
+        ...userData,
+        updated_at: new Date().toISOString(),
+      })
+
+      // Update user data in session
+      sessionUtils.updateUserInSession(userData)
+
+      return result
+    } catch (error) {
+      console.error('Error updating user profile:', error)
+      throw error
+    }
+  },
+
+  async getUserRole() {
+    try {
+      const user = await this.getCurrentUser()
+      if (!user) return null
+      return user.role
+    } catch (error) {
+      console.error('Error getting user role:', error)
+      return null
+    }
+  },
+
+  async isAuthenticated() {
+    try {
+      // Check if session is valid using sessionManager
+      return sessionUtils.isSessionValid()
+    } catch (error
