@@ -1,4 +1,4 @@
-// תיקון לקובץ router/index.js
+// תיקון לקובץ src/router/index.js
 
 import {
   createRouter,
@@ -8,7 +8,7 @@ import {
 } from 'vue-router'
 import routes from './routes'
 import { authApi } from '../services/db2rest'
-import { useUserStore } from '../stores/user' // ← הוסף את זה
+import { useUserStore } from '../stores/user'
 import { Notify } from 'quasar'
 import { i18n } from 'src/boot/i18n'
 
@@ -65,11 +65,11 @@ export default function (/* { store, ssrContext } */) {
         // קבלת user store
         const userStore = useUserStore()
 
-        // 🎯 הסרה: אל תטען את המשתמש שוב! זה מאפס את ההרשאות
-        // if (!userStore.currentUser) {
-        //   console.log('No current user, loading...')
-        //   await userStore.loadCurrentUser()
-        // }
+        // 🎯 תיקון: וודא שהמשתמש נטען אבל ללא מחיקת permissions קיימות
+        if (!userStore.currentUser) {
+          console.log('No current user, loading without resetting permissions...')
+          await userStore.loadCurrentUser()
+        }
 
         // אם אין משתמש נוכחי, זה אומר שיש בעיה עם ההתחברות
         if (!userStore.currentUser) {

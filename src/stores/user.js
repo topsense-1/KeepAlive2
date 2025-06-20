@@ -239,10 +239,19 @@ export const useUserStore = defineStore('user', () => {
       console.log('🔄 Loading permissions for user:', currentUser.value?.id)
 
       if (!currentUser.value?.id) {
-        console.log('❌ No current user ID, setting empty permissions')
-        permissions.value = []
+        console.log('❌ No current user ID')
+        // 🎯 תיקון: אל תמחק permissions קיימות אלא רק אם זה באמת משתמש חדש
+        if (permissions.value.length === 0) {
+          console.log('Setting empty permissions array for new session')
+          permissions.value = []
+        } else {
+          console.log('Keeping existing permissions, no current user but permissions exist')
+        }
         return
       }
+
+      // שמירת ההרשאות הקיימות כגיבוי למקרה של כשל
+      const existingPermissions = [...permissions.value]
 
       // נסה להשתמש ב-API החדש
       try {
@@ -263,13 +272,33 @@ export const useUserStore = defineStore('user', () => {
 
       // Fallback - הגדרת הרשאות מינימליות לפי תפקיד
       console.log('🔄 Setting fallback permissions for role:', currentUser.value?.role)
-      permissions.value = getMinimalPermissionsByRole(currentUser.value.role)
+      const fallbackPermissions = getMinimalPermissionsByRole(currentUser.value.role)
+
+      // 🎯 תיקון: אם יש permissions קיימות והן לא ריקות, השווה אותן עם ה-fallback
+      if (existingPermissions.length > 0 && fallbackPermissions.length > 0) {
+        // אם ההרשאות הקיימות מכילות לפחות את ההרשאות המינימליות, שמור אותן
+        const hasMinimalPermissions = fallbackPermissions.every((perm) =>
+          existingPermissions.includes(perm),
+        )
+
+        if (hasMinimalPermissions) {
+          console.log('📋 Keeping existing permissions (they include minimal required permissions)')
+          permissions.value = existingPermissions
+          return
+        }
+      }
+
+      permissions.value = fallbackPermissions
       console.log('📋 Fallback permissions set:', permissions.value)
     } catch (err) {
       console.error('❌ Error loading permissions:', err)
-      // הגדרת הרשאות מינימליות במקרה של שגיאה
-      permissions.value = ['viewDashboard']
-      console.log('📋 Emergency fallback permissions:', permissions.value)
+      // 🎯 תיקון: במקרה של שגיאה, נסה לשמור permissions קיימות
+      if (permissions.value.length === 0) {
+        permissions.value = ['viewDashboard']
+        console.log('📋 Emergency fallback permissions:', permissions.value)
+      } else {
+        console.log('📋 Keeping existing permissions due to error:', permissions.value)
+      }
     }
   }
 
