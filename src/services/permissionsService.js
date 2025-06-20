@@ -8,12 +8,14 @@ const rolePermissions = {
     'viewHouses',
     'editHouses',
     'manageHouses',
+    'manageCompanies', // ← הוספתי הרשאה חדשה
+    'manageSites', // ← הוספתי הרשאה חדשה
     'viewSensors',
     'editSensors',
     'manageSensors',
     'viewUsers',
     'editUsers',
-    'manageUsers', // ← הוסף זה!
+    'manageUsers',
     'viewEvents',
     'viewReports',
     'receiveAlerts',
@@ -25,7 +27,7 @@ const rolePermissions = {
     'viewDashboard',
     'viewUsers',
     'editUsers',
-    'manageUsers', // ← הוסף זה גם!
+    'manageUsers',
     'viewReports',
     'receiveAlerts',
     'accessSupport',
@@ -64,8 +66,8 @@ const rolePermissions = {
   ],
   'Family Member': [
     'viewDashboard',
-    'viewHouses',
-    'viewSensors',
+    'viewHouses', // ← רק צפייה, לא ניהול
+    'viewSensors', // ← רק צפייה, לא ניהול
     'viewEvents',
     'receiveAlerts',
     'accessSupport',

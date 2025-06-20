@@ -40,48 +40,63 @@ const routes = [
     component: () => import('../layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
-      // דשבורד - עמוד ראשי
+      // דשבורד - עמוד ראשי (כל המשתמשים)
       {
         path: 'dashboard',
         name: 'dashboard',
         component: () => import('../pages/DashboardPage.vue'),
-        meta: { title: 'Dashboard' },
+        meta: {
+          title: 'Dashboard',
+          requiresPermission: 'viewDashboard',
+        },
       },
 
-      // ניהול חברות
+      // ניהול חברות - רק מנהלי מערכת
       {
         path: 'companies',
         name: 'companies',
         component: () => import('../pages/CompaniesPage.vue'),
-        meta: { title: 'Companies' },
+        meta: {
+          title: 'Companies',
+          requiresPermission: 'manageCompanies', // הרשאה חדשה
+        },
       },
 
-      // ניהול אתרים
+      // ניהול אתרים - רק מנהלי מערכת
       {
         path: 'sites',
         name: 'sites',
         component: () => import('../pages/SitesPage.vue'),
-        meta: { title: 'Sites' },
+        meta: {
+          title: 'Sites',
+          requiresPermission: 'manageSites', // הרשאה חדשה
+        },
       },
 
-      // ניהול בתים
+      // ניהול בתים - מנהלי מערכת ומנהלי בתים
       {
         path: 'houses',
         name: 'houses',
         component: () => import('../pages/HousesAdminPage.vue'),
-        meta: { title: 'Houses' },
+        meta: {
+          title: 'Houses',
+          requiresPermission: 'manageHouses',
+        },
       },
 
-      // צפייה בפרטי בית ספציפי
+      // צפייה בפרטי בית ספציפי - משתמשים עם גישה לבית
       {
         path: 'house/:id',
         name: 'houseDetails',
         component: () => import('../pages/HouseDetailsPage.vue'),
         props: true,
-        meta: { title: 'House Details' },
+        meta: {
+          title: 'House Details',
+          requiresPermission: 'viewHouses',
+        },
       },
 
-      // ניהול מערכת
+      // ניהול מערכת - מנהלי מערכת ומנהלי בתים
       {
         path: 'administration',
         name: 'administration',
@@ -92,7 +107,7 @@ const routes = [
         },
       },
 
-      // ניהול משתמשים
+      // ניהול משתמשים - מנהלי מערכת ומנהלי משתמשים
       {
         path: 'users',
         name: 'users',
@@ -103,20 +118,26 @@ const routes = [
         },
       },
 
-      // הגדרות פרופיל משתמש
+      // הגדרות פרופיל משתמש - כל המשתמשים
       {
         path: 'profile',
         name: 'profile',
         component: () => import('../pages/UserProfilePage.vue'),
-        meta: { title: 'User Profile' },
+        meta: {
+          title: 'User Profile',
+          requiresPermission: 'viewDashboard', // בסיסי לכל המשתמשים
+        },
       },
 
-      // עמוד תמיכה
+      // עמוד תמיכה - כל המשתמשים
       {
         path: 'support',
         name: 'support',
         component: () => import('../pages/SupportPage.vue'),
-        meta: { title: 'Support' },
+        meta: {
+          title: 'Support',
+          requiresPermission: 'accessSupport',
+        },
       },
     ],
   },

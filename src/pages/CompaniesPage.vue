@@ -1,12 +1,32 @@
-<!-- src/pages/CompaniesAdminPage.vue -->
+<!-- src/pages/CompaniesPage.vue -->
 <template>
   <q-page padding>
-    <div class="row q-col-gutter-md">
+    <!-- בדיקת הרשאות - הצגת הודעה אם אין הרשאה לניהול חברות -->
+    <div v-if="!canManageCompanies" class="text-center q-pa-xl">
+      <q-icon name="lock" size="4rem" color="grey" />
+      <div class="text-h6 q-mt-md text-grey">{{ $t('insufficientPermissions') }}</div>
+      <div class="text-body2 text-grey q-mt-sm">רק מנהלי מערכת יכולים לנהל חברות</div>
+      <q-btn
+        :label="$t('goHome')"
+        color="primary"
+        @click="$router.push('/dashboard')"
+        class="q-mt-lg"
+      />
+    </div>
+
+    <!-- תוכן הדף - רק אם יש הרשאה -->
+    <div v-else class="row q-col-gutter-md">
       <div class="col-12">
         <div class="row items-center q-mb-md">
           <div class="text-h6">{{ $t('companiesAdministration') }}</div>
           <q-space />
-          <q-btn color="primary" :label="$t('addCompany')" icon="add" @click="showAddCompanyForm" />
+          <q-btn
+            color="primary"
+            :label="$t('addCompany')"
+            icon="add"
+            @click="showAddCompanyForm"
+            v-if="canManageCompanies"
+          />
         </div>
 
         <q-table
@@ -27,17 +47,15 @@
                 {{ props.row.total_houses || 0 }}
               </q-td>
               <q-td key="actions" :props="props">
-                <!--
                 <q-btn
-                  icon="visibility"
+                  icon="edit"
                   flat
                   round
                   dense
                   size="sm"
-                  @click="viewCompany(props.row)"
+                  @click="editCompany(props.row)"
+                  v-if="canManageCompanies"
                 />
-                -->
-                <q-btn icon="edit" flat round dense size="sm" @click="editCompany(props.row)" />
                 <q-btn
                   icon="delete"
                   flat
@@ -46,6 +64,7 @@
                   size="sm"
                   color="negative"
                   @click="confirmDeleteCompany(props.row)"
+                  v-if="canManageCompanies"
                 />
               </q-td>
             </q-tr>
@@ -118,22 +137,39 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
-// import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useCompaniesStore } from '../stores/companies'
+import { useUserStore } from '../stores/user'
 
 const { t } = useI18n()
-// const router = useRouter()
 const $q = useQuasar()
 const companiesStore = useCompaniesStore()
+const userStore = useUserStore()
 
 // Get loading state from store
 const loading = computed(() => companiesStore.loading)
 
 // Get companies data from store
 const companies = computed(() => companiesStore.companies)
+
+// ========== בדיקת הרשאות ==========
+// בדיקה שרק מנהל מערכת יכול לנהל חברות
+const canManageCompanies = computed(() => {
+  return userStore.isAdmin && userStore.currentUser?.role === 'System Admin'
+})
+
+// דיבוג הרשאות
+watchEffect(() => {
+  console.log('=== Companies Permission Debug ===')
+  console.log('userStore.currentUser:', userStore.currentUser)
+  console.log('userStore.isAuthenticated:', userStore.isAuthenticated)
+  console.log('userStore.isAdmin:', userStore.isAdmin)
+  console.log('currentUser.role:', userStore.currentUser?.role)
+  console.log('canManageCompanies:', canManageCompanies.value)
+  console.log('===================================')
+})
 
 // Company table columns
 const companyColumns = ref([
@@ -170,11 +206,18 @@ const confirmDeleteText = ref('')
 const deleteCallback = ref(null)
 
 // CRUD operations
-// const viewCompany = (company) => {
-//   router.push({ name: 'companyDetails', params: { id: company.id } })
-// }
-
 const editCompany = (company) => {
+  // בדיקת הרשאה נוספת לפני עריכה
+  if (!canManageCompanies.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   isEditing.value = true
   editedCompany.value = {
     id: company.id,
@@ -185,6 +228,17 @@ const editCompany = (company) => {
 }
 
 const confirmDeleteCompany = (company) => {
+  // בדיקת הרשאה נוספת לפני מחיקה
+  if (!canManageCompanies.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   confirmDeleteText.value = t('confirmDeleteCompany', { company: company.name })
   deleteCallback.value = async () => {
     try {
@@ -216,6 +270,17 @@ const deleteConfirmed = () => {
 }
 
 const saveCompany = async () => {
+  // בדיקת הרשאה נוספת לפני שמירה
+  if (!canManageCompanies.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   try {
     if (isEditing.value) {
       // Update existing company
@@ -260,6 +325,17 @@ const saveCompany = async () => {
 }
 
 const showAddCompanyForm = () => {
+  // בדיקת הרשאה נוספת לפני הוספה
+  if (!canManageCompanies.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   resetCompanyForm()
   showAddCompanyDialog.value = true
 }
@@ -275,7 +351,18 @@ const resetCompanyForm = () => {
 // Add onMounted hook to load initial data
 onMounted(async () => {
   try {
-    await companiesStore.fetchAllCompanies()
+    // ודא שנתוני המשתמש נטענו
+    if (!userStore.currentUser) {
+      console.log('Loading current user for companies page...')
+      await userStore.loadCurrentUser()
+    }
+
+    // טען חברות רק אם יש הרשאה
+    if (canManageCompanies.value) {
+      await companiesStore.fetchAllCompanies()
+    } else {
+      console.log('User does not have permission to manage companies')
+    }
   } catch (error) {
     console.error('Error loading initial data:', error)
     $q.notify({

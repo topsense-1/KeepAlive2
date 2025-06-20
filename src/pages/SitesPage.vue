@@ -1,12 +1,32 @@
-<!-- src/pages/SitesAdminPage.vue -->
+<!-- src/pages/SitesPage.vue -->
 <template>
   <q-page padding>
-    <div class="row q-col-gutter-md">
+    <!-- בדיקת הרשאות - הצגת הודעה אם אין הרשאה לניהול אתרים -->
+    <div v-if="!canManageSites" class="text-center q-pa-xl">
+      <q-icon name="lock" size="4rem" color="grey" />
+      <div class="text-h6 q-mt-md text-grey">{{ $t('insufficientPermissions') }}</div>
+      <div class="text-body2 text-grey q-mt-sm">רק מנהלי מערכת יכולים לנהל אתרים</div>
+      <q-btn
+        :label="$t('goHome')"
+        color="primary"
+        @click="$router.push('/dashboard')"
+        class="q-mt-lg"
+      />
+    </div>
+
+    <!-- תוכן הדף - רק אם יש הרשאה -->
+    <div v-else class="row q-col-gutter-md">
       <div class="col-12">
         <div class="row items-center q-mb-md">
           <div class="text-h6">{{ $t('sitesAdministration') }}</div>
           <q-space />
-          <q-btn color="primary" :label="$t('addSite')" icon="add" @click="showAddSiteForm" />
+          <q-btn
+            color="primary"
+            :label="$t('addSite')"
+            icon="add"
+            @click="showAddSiteForm"
+            v-if="canManageSites"
+          />
         </div>
 
         <q-table
@@ -19,12 +39,20 @@
           <template v-slot:body="props">
             <q-tr :props="props">
               <q-td key="name" :props="props">{{ props.row.name }}</q-td>
-              <q-td key="companyName" :props="props">{{ props.row.company_name || '-' }}</q-td>
+              <q-td key="companyName" :props="props">{{ props.row.company_name }}</q-td>
               <q-td key="totalHouses" :props="props">
                 {{ props.row.total_houses || 0 }}
               </q-td>
               <q-td key="actions" :props="props">
-                <q-btn icon="edit" flat round dense size="sm" @click="editSite(props.row)" />
+                <q-btn
+                  icon="edit"
+                  flat
+                  round
+                  dense
+                  size="sm"
+                  @click="editSite(props.row)"
+                  v-if="canManageSites"
+                />
                 <q-btn
                   icon="delete"
                   flat
@@ -33,6 +61,7 @@
                   size="sm"
                   color="negative"
                   @click="confirmDeleteSite(props.row)"
+                  v-if="canManageSites"
                 />
               </q-td>
             </q-tr>
@@ -108,16 +137,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useQuasar } from 'quasar'
 import { useSitesStore } from '../stores/sites'
 import { useCompaniesStore } from '../stores/companies'
+import { useUserStore } from '../stores/user'
 
 const { t } = useI18n()
 const $q = useQuasar()
 const sitesStore = useSitesStore()
 const companiesStore = useCompaniesStore()
+const userStore = useUserStore()
 
 // Get loading state from store
 const loading = computed(() => sitesStore.loading)
@@ -127,6 +158,23 @@ const sites = computed(() => sitesStore.sites)
 
 // Get companies for dropdown
 const companies = computed(() => companiesStore.companies)
+
+// ========== בדיקת הרשאות ==========
+// בדיקה שרק מנהל מערכת יכול לנהל אתרים
+const canManageSites = computed(() => {
+  return userStore.isAdmin && userStore.currentUser?.role === 'System Admin'
+})
+
+// דיבוג הרשאות
+watchEffect(() => {
+  console.log('=== Sites Permission Debug ===')
+  console.log('userStore.currentUser:', userStore.currentUser)
+  console.log('userStore.isAuthenticated:', userStore.isAuthenticated)
+  console.log('userStore.isAdmin:', userStore.isAdmin)
+  console.log('currentUser.role:', userStore.currentUser?.role)
+  console.log('canManageSites:', canManageSites.value)
+  console.log('==================================')
+})
 
 // Company options for dropdown
 const companyOptions = computed(() =>
@@ -171,6 +219,17 @@ const deleteCallback = ref(null)
 
 // CRUD operations
 const editSite = (site) => {
+  // בדיקת הרשאה נוספת לפני עריכה
+  if (!canManageSites.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   isEditing.value = true
   editedSite.value = {
     id: site.id,
@@ -181,6 +240,17 @@ const editSite = (site) => {
 }
 
 const confirmDeleteSite = (site) => {
+  // בדיקת הרשאה נוספת לפני מחיקה
+  if (!canManageSites.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   confirmDeleteText.value = t('confirmDeleteSite', { site: site.name })
   deleteCallback.value = async () => {
     try {
@@ -212,6 +282,17 @@ const deleteConfirmed = () => {
 }
 
 const saveSite = async () => {
+  // בדיקת הרשאה נוספת לפני שמירה
+  if (!canManageSites.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   try {
     if (isEditing.value) {
       // Update existing site
@@ -256,6 +337,17 @@ const saveSite = async () => {
 }
 
 const showAddSiteForm = () => {
+  // בדיקת הרשאה נוספת לפני הוספה
+  if (!canManageSites.value) {
+    $q.notify({
+      color: 'negative',
+      textColor: 'white',
+      icon: 'lock',
+      message: t('insufficientPermissions'),
+    })
+    return
+  }
+
   resetSiteForm()
   showAddSiteDialog.value = true
 }
@@ -271,8 +363,19 @@ const resetSiteForm = () => {
 // Add onMounted hook to load initial data
 onMounted(async () => {
   try {
-    // Load both sites and companies
-    await Promise.all([sitesStore.fetchAllSites(), companiesStore.fetchAllCompanies()])
+    // ודא שנתוני המשתמש נטענו
+    if (!userStore.currentUser) {
+      console.log('Loading current user for sites page...')
+      await userStore.loadCurrentUser()
+    }
+
+    // טען נתונים רק אם יש הרשאה
+    if (canManageSites.value) {
+      // Load both sites and companies
+      await Promise.all([sitesStore.fetchAllSites(), companiesStore.fetchAllCompanies()])
+    } else {
+      console.log('User does not have permission to manage sites')
+    }
   } catch (error) {
     console.error('Error loading initial data:', error)
     $q.notify({

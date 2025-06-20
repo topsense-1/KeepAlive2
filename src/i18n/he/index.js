@@ -414,4 +414,22 @@ export default {
   unavailable: 'לא זמין',
   sensorSelected: 'החיישן נבחר בהצלחה',
   configuringSensor: 'מגדיר את החיישן...',
+
+  sitesAdministration: 'ניהול אתרים',
+  addSite: 'הוסף אתר',
+  editSite: 'ערוך אתר',
+  siteName: 'שם האתר',
+  company: 'חברה',
+  siteAdded: 'האתר נוסף בהצלחה',
+  siteUpdated: 'האתר עודכן בהצלחה',
+  siteDeleted: 'האתר נמחק בהצלחה',
+  errorAddingSite: 'שגיאה בהוספת האתר',
+  errorUpdatingSite: 'שגיאה בעדכון האתר',
+  errorDeletingSite: 'שגיאה במחיקת האתר',
+  confirmDeleteSite: 'האם אתה בטוח שברצונך למחוק את האתר "{site}"?',
+
+  // Additional permission messages - הודעות הרשאות נוספות
+  accessDenied: 'הגישה נדחתה',
+  permissionDenied: 'ההרשאה נדחתה',
+  contactAdministrator: 'אנא צור קשר עם מנהל המערכת',
 }
