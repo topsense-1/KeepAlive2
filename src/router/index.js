@@ -65,10 +65,16 @@ export default function (/* { store, ssrContext } */) {
         // קבלת user store
         const userStore = useUserStore()
 
-        // וודא שיש משתמש טעון
+        // 🎯 הסרה: אל תטען את המשתמש שוב! זה מאפס את ההרשאות
+        // if (!userStore.currentUser) {
+        //   console.log('No current user, loading...')
+        //   await userStore.loadCurrentUser()
+        // }
+
+        // אם אין משתמש נוכחי, זה אומר שיש בעיה עם ההתחברות
         if (!userStore.currentUser) {
-          console.log('No current user, loading...')
-          await userStore.loadCurrentUser()
+          console.log('❌ No current user in store despite being authenticated')
+          return next('/login')
         }
 
         // בדיקת הרשאה דרך user store
