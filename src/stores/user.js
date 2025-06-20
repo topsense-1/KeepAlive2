@@ -1,73 +1,127 @@
-// src/stores/user.js - Enhanced with user management capabilities
+// src/stores/user.js - עדכון למנגנון ההרשאות החדש
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi, usersApi, sessionSecurityApi, permissionsApi } from '../services/db2rest'
+import { permissionsService } from '../services/permissionsService'
 
 export const useUserStore = defineStore('user', () => {
+  // State
   const currentUser = ref(null)
-  const token = ref(null)
+  const token = ref(localStorage.getItem('session_token'))
   const loading = ref(false)
   const error = ref(null)
   const permissions = ref([])
   const sessionInfo = ref(null)
+  const hierarchyMappings = ref([]) // מיפויים הירכיים של המשתמש
 
-  const isAuthenticated = computed(() => !!currentUser.value)
+  // Computed Properties
+  const isAuthenticated = computed(() => !!currentUser.value && !!token.value)
   const isAdmin = computed(() => currentUser.value?.role === 'System Admin')
   const isUserManager = computed(() => currentUser.value?.role === 'User Manager')
-  const canManageUsers = computed(() => isAdmin.value || isUserManager.value)
+  const isCompaniesManager = computed(() => currentUser.value?.role === 'Companies Manager')
+  const isSitesManager = computed(() => currentUser.value?.role === 'Sites Manager')
+  const isHouseManager = computed(() => currentUser.value?.role === 'House Manager')
+  const isFamilyManager = computed(() => currentUser.value?.role === 'Family Manager')
 
-  // Enhanced login with session management and password expiry check
+  // הרשאות ניהול
+  const canManageUsers = computed(() => isAdmin.value || isUserManager.value)
+  const canManageCompanies = computed(() => isAdmin.value)
+  const canManageSites = computed(() => isAdmin.value || isCompaniesManager.value)
+  const canManageHouses = computed(
+    () => isAdmin.value || isCompaniesManager.value || isSitesManager.value,
+  )
+  const canManageSensors = computed(
+    () => canManageHouses.value || isHouseManager.value || isFamilyManager.value,
+  )
+
+  // רמת הירכיה של המשתמש
+  const userHierarchyLevel = computed(() => {
+    const roleToLevel = {
+      'System Admin': 0,
+      'User Manager': 1,
+      'Companies Manager': 1,
+      'Sites Manager': 2,
+      'House Manager': 3,
+      'Family Manager': 3,
+      Caregiver: 4,
+      'Family Member': 4,
+    }
+    return roleToLevel[currentUser.value?.role] || 99
+  })
+
+  // Actions
+
+  /**
+   * התחברות עם בדיקת תפוגת סיסמה ותמיכה ב"זכור אותי"
+   */
   async function login(credentials) {
     loading.value = true
     error.value = null
 
     try {
-      // Use real authentication
+      // התחברות בסיסית
       const authData = await authApi.login(credentials.email, credentials.password)
-      token.value = authData.access_token || authData.session?.access_token
 
-      // Get user data
-      const userData = await authApi.getCurrentUser()
-      console.log(userData)
-      currentUser.value = userData
+      // שמירת טוקן
+      token.value = authData.session.access_token
+      if (credentials.rememberMe) {
+        localStorage.setItem('session_token', token.value)
+      }
 
-      // Check password expiry
-      if (userData?.id) {
-        const passwordCheck = await sessionSecurityApi.checkPasswordExpiry(userData.id)
+      // קבלת נתוני המשתמש
+      currentUser.value = authData.user
+
+      // בדיקת תפוגת סיסמה
+      if (currentUser.value?.id) {
+        const passwordCheck = await sessionSecurityApi.checkPasswordExpiry(currentUser.value.id)
         if (passwordCheck.expired) {
           error.value = 'Password has expired. Please contact administrator.'
           throw new Error('Password expired')
         }
 
-        // Store session info for password expiry tracking
+        // שמירת מידע הפעלה
         sessionInfo.value = {
           passwordExpiry: passwordCheck,
           loginTime: new Date(),
+          expiresAt: authData.session.expires_at,
         }
       }
 
-      // Load permissions
+      // טעינת הרשאות ומיפויים
       await loadPermissions()
+      await loadHierarchyMappings()
 
       return currentUser.value
     } catch (err) {
       error.value = err.message
+      // ניקוי נתונים במקרה של שגיאה
+      currentUser.value = null
+      token.value = null
+      localStorage.removeItem('session_token')
       throw err
     } finally {
       loading.value = false
     }
   }
 
+  /**
+   * התנתקות
+   */
   async function logout() {
     loading.value = true
 
     try {
-      // Use real logout
       await authApi.logout()
+
+      // ניקוי כל הנתונים
       currentUser.value = null
       token.value = null
       permissions.value = []
+      hierarchyMappings.value = []
       sessionInfo.value = null
+
+      localStorage.removeItem('session_token')
+
       return true
     } catch (err) {
       error.value = err.message
@@ -77,39 +131,50 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /**
+   * טעינת משתמש נוכחי (לרענון הדף)
+   */
   async function loadCurrentUser() {
+    if (!token.value) return null
+
     loading.value = true
 
     try {
-      // Use real authentication
       const userData = await authApi.getCurrentUser()
       currentUser.value = userData
 
       if (userData) {
-        await loadPermissions()
-
-        // Check password expiry on load
+        // בדיקת תפוגת סיסמה
         const passwordCheck = await sessionSecurityApi.checkPasswordExpiry(userData.id)
         sessionInfo.value = {
           passwordExpiry: passwordCheck,
           loginTime: new Date(),
         }
+
+        // טעינת הרשאות ומיפויים
+        await loadPermissions()
+        await loadHierarchyMappings()
       }
 
       return currentUser.value
     } catch (err) {
       error.value = err.message
+      // אם יש שגיאה בטעינת המשתמש, נקה הכל
+      await logout()
       return null
     } finally {
       loading.value = false
     }
   }
 
+  /**
+   * עדכון פרופיל משתמש
+   */
   async function updateUserProfile(userId, userData) {
     try {
       const updatedUser = await usersApi.update(userId, userData)
 
-      // Update current user if it's the same user
+      // עדכון המשתמש הנוכחי אם זה אותו משתמש
       if (userId === currentUser.value?.id) {
         currentUser.value = { ...currentUser.value, ...updatedUser }
       }
@@ -121,6 +186,9 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /**
+   * טעינת הרשאות המשתמש (משולב מתפקיד + הרשאות ספציפיות)
+   */
   async function loadPermissions() {
     try {
       if (!currentUser.value?.id) {
@@ -128,149 +196,233 @@ export const useUserStore = defineStore('user', () => {
         return
       }
 
-      // נסה לטעון הרשאות מה-database
-      let userPermissions = []
-      try {
-        userPermissions = await permissionsApi.getUserPermissions(currentUser.value.id)
-      } catch (error) {
-        console.warn('Could not load permissions from database:', error)
-      }
+      // קבלת הרשאות אפקטיביות מה-view החדש
+      const userPermissions = await permissionsApi.getUserPermissions(currentUser.value.id)
 
       if (userPermissions && userPermissions.length > 0) {
-        permissions.value = userPermissions.map((up) => up.permission.name)
+        permissions.value = userPermissions.map((up) => up.permission_name)
       } else {
-        // Fallback: הגדר הרשאות על בסיס התפקיד
-        console.log('Setting fallback permissions for role:', currentUser.value?.role)
-
-        if (currentUser.value?.role === 'System Admin') {
-          permissions.value = [
-            'viewDashboard',
-            'manageHouses',
-            'manageSensors',
-            'manageUsers', // ← חשוב!
-            'viewReports',
-            'receiveAlerts',
-            'accessSupport',
-            'systemConfig',
-          ]
-        } else if (currentUser.value?.role === 'User Manager') {
-          permissions.value = [
-            'viewDashboard',
-            'manageUsers', // ← חשוב!
-            'viewReports',
-            'receiveAlerts',
-            'accessSupport',
-          ]
-        } else if (currentUser.value?.role === 'House Manager') {
-          permissions.value = [
-            'viewDashboard',
-            'manageSensors',
-            'viewReports',
-            'receiveAlerts',
-            'accessSupport',
-          ]
-        } else {
-          permissions.value = ['viewDashboard', 'receiveAlerts', 'accessSupport']
-        }
+        // fallback - הגדרת הרשאות מינימליות לפי תפקיד
+        permissions.value = getMinimalPermissionsByRole(currentUser.value.role)
       }
 
-      console.log('Final permissions loaded:', permissions.value) // דיבוג
+      console.log('Permissions loaded:', permissions.value)
     } catch (err) {
       console.error('Error loading permissions:', err)
-      permissions.value = ['viewDashboard'] // Fallback minimal permissions
+      // הגדרת הרשאות מינימליות במקרה של שגיאה
+      permissions.value = ['viewDashboard']
     }
   }
 
+  /**
+   * טעינת מיפויים הירכיים של המשתמש
+   */
+  async function loadHierarchyMappings() {
+    try {
+      if (!currentUser.value?.id) {
+        hierarchyMappings.value = []
+        return
+      }
+
+      // אם זה System Admin, יש לו גישה לכל
+      if (isAdmin.value) {
+        hierarchyMappings.value = [
+          {
+            permission_scope: 'all',
+            access_level: 'admin',
+            company_name: 'All Companies',
+            site_name: 'All Sites',
+            house_number: 'All Houses',
+          },
+        ]
+        return
+      }
+
+      // קבלת מיפויים מטבלת sys_map
+      const mappings = await permissionsService.getUserAccessibleCompanies(currentUser.value.id)
+      hierarchyMappings.value = mappings || []
+    } catch (err) {
+      console.error('Error loading hierarchy mappings:', err)
+      hierarchyMappings.value = []
+    }
+  }
+
+  /**
+   * בדיקת הרשאה ספציפית
+   */
   function hasPermission(permission) {
     return permissions.value.includes(permission)
   }
 
-  // Enhanced permission checks for user management
+  /**
+   * בדיקת הרשאה מתקדמת עם משאב
+   */
+  async function hasPermissionAdvanced(permission, resourceId = null, resourceType = null) {
+    if (!currentUser.value?.id) return false
+
+    return await permissionsService.hasPermission(
+      currentUser.value.id,
+      permission,
+      resourceId,
+      resourceType,
+    )
+  }
+
+  /**
+   * בדיקת יכולת יצירת משתמש
+   */
   function canCreateUser() {
     return hasPermission('manageUsers') || isAdmin.value
   }
 
+  /**
+   * בדיקת יכולת עריכת משתמש
+   */
   function canEditUser(targetUser) {
     if (!canManageUsers.value) return false
 
-    // System Admin can edit anyone except other System Admins
+    // System Admin יכול לערוך את כולם חוץ מ-System Admin אחרים
     if (isAdmin.value) {
       return targetUser.role !== 'System Admin' || targetUser.id === currentUser.value?.id
     }
 
-    // User Manager cannot edit System Admin
+    // User Manager לא יכול לערוך System Admin
     if (isUserManager.value) {
       return targetUser.role !== 'System Admin'
     }
 
-    return false
+    // בדיקת רמת הירכיה
+    const targetLevel = getRoleLevel(targetUser.role)
+    return userHierarchyLevel.value <= targetLevel
   }
 
+  /**
+   * בדיקת יכולת מחיקת משתמש
+   */
   function canDeleteUser(targetUser) {
     if (!canManageUsers.value) return false
 
-    // Cannot delete self
+    // לא ניתן למחוק את עצמך
     if (targetUser.id === currentUser.value?.id) return false
 
-    // Cannot delete if it's the last System Admin
+    // לא ניתן למחוק System Admin (כדי לא למחוק את האחרון)
     if (targetUser.role === 'System Admin') {
-      // This would need to be checked against actual data
-      return false // For safety, assume we can't delete System Admins
+      return false
     }
 
     return canEditUser(targetUser)
   }
 
+  /**
+   * בדיקת יכולת הקצאת תפקיד
+   */
   function canAssignRole(targetRole) {
-    // System Admin can assign any role
+    // System Admin יכול להקצות כל תפקיד
     if (isAdmin.value) return true
 
-    // User Manager cannot assign System Admin role
-    if (isUserManager.value) {
-      return targetRole !== 'System Admin'
+    // בדיקת רמת הירכיה
+    const targetLevel = getRoleLevel(targetRole)
+    return userHierarchyLevel.value < targetLevel
+  }
+
+  /**
+   * קבלת חברות נגישות למשתמש
+   */
+  async function getAccessibleCompanies() {
+    try {
+      if (!currentUser.value?.id) return []
+
+      return await permissionsService.getUserAccessibleCompanies(currentUser.value.id)
+    } catch (err) {
+      console.error('Error getting accessible companies:', err)
+      return []
     }
-
-    return false
   }
 
-  function canManageHouseAssignments(targetUser) {
-    if (!canManageUsers.value) return false
+  /**
+   * קבלת בתים נגישים למשתמש
+   */
+  async function getAccessibleHouses() {
+    try {
+      if (!currentUser.value?.id) return []
 
-    // System Admin house assignments cannot be changed
-    if (targetUser.role === 'System Admin') return false
-
-    return canEditUser(targetUser)
+      return await permissionsService.getUserAccessibleHouses(currentUser.value.id)
+    } catch (err) {
+      console.error('Error getting accessible houses:', err)
+      return []
+    }
   }
 
-  function canManagePermissions(targetUser) {
-    return canEditUser(targetUser)
+  /**
+   * בדיקת גישה למשאב ספציפי
+   */
+  async function hasResourceAccess(resourceId, resourceType) {
+    try {
+      if (!currentUser.value?.id) return false
+
+      return await permissionsService.hasResourceAccess(
+        currentUser.value.id,
+        resourceId,
+        resourceType,
+      )
+    } catch (err) {
+      console.error('Error checking resource access:', err)
+      return false
+    }
   }
 
-  // Password and session management
+  /**
+   * וולידציה ליצירת משתמש חדש
+   */
+  async function validateUserCreation(targetRole, companyId = null, siteId = null, houseId = null) {
+    try {
+      if (!currentUser.value?.id) return { valid: false, error: 'Not authenticated' }
+
+      return await permissionsService.validateUserCreation(
+        currentUser.value.id,
+        targetRole,
+        companyId,
+        siteId,
+        houseId,
+      )
+    } catch (err) {
+      console.error('Error validating user creation:', err)
+      return { valid: false, error: err.message }
+    }
+  }
+
+  /**
+   * בדיקת פיגת סיסמה
+   */
   async function checkPasswordExpiry() {
-    if (!currentUser.value?.id) return null
+    if (!currentUser.value?.id) return { expired: false }
 
     try {
-      const check = await sessionSecurityApi.checkPasswordExpiry(currentUser.value.id)
+      const result = await sessionSecurityApi.checkPasswordExpiry(currentUser.value.id)
 
+      // עדכון sessionInfo
       if (sessionInfo.value) {
-        sessionInfo.value.passwordExpiry = check
+        sessionInfo.value.passwordExpiry = result
       }
 
-      return check
-    } catch (error) {
-      console.error('Error checking password expiry:', error)
-      return null
+      return result
+    } catch (err) {
+      console.error('Error checking password expiry:', err)
+      return { expired: false, error: err.message }
     }
   }
 
+  /**
+   * הארכת תוקף סיסמה
+   */
   async function extendPasswordExpiry(hours = 24) {
     if (!currentUser.value?.id) return false
 
     try {
       const result = await sessionSecurityApi.extendPasswordExpiry(currentUser.value.id, hours)
 
-      if (result.success && sessionInfo.value) {
+      // עדכון sessionInfo
+      if (sessionInfo.value && result.success) {
         sessionInfo.value.passwordExpiry = {
           expired: false,
           expiresAt: result.newExpiry,
@@ -279,76 +431,163 @@ export const useUserStore = defineStore('user', () => {
       }
 
       return result.success
-    } catch (error) {
-      console.error('Error extending password expiry:', error)
-      return false
+    } catch (err) {
+      console.error('Error extending password expiry:', err)
+      throw err
     }
   }
 
-  function isPasswordExpiringSoon() {
-    if (!sessionInfo.value?.passwordExpiry) return false
+  // Helper Functions
 
-    const expiry = sessionInfo.value.passwordExpiry
-    return expiry.hoursLeft !== undefined && expiry.hoursLeft <= 2 && expiry.hoursLeft > 0
+  /**
+   * קבלת רמת תפקיד
+   */
+  function getRoleLevel(roleName) {
+    const roleToLevel = {
+      'System Admin': 0,
+      'User Manager': 1,
+      'Companies Manager': 1,
+      'Sites Manager': 2,
+      'House Manager': 3,
+      'Family Manager': 3,
+      Caregiver: 4,
+      'Family Member': 4,
+    }
+    return roleToLevel[roleName] || 99
   }
 
-  function isPasswordExpired() {
-    return sessionInfo.value?.passwordExpiry?.expired || false
-  }
-
-  // User statistics helpers
-  function getUserDisplayName(user = null) {
-    const targetUser = user || currentUser.value
-    if (!targetUser) return 'Unknown User'
-
-    return targetUser.full_name || targetUser.name || targetUser.email?.split('@')[0] || 'User'
-  }
-
-  function getUserInitials(user = null) {
-    const displayName = getUserDisplayName(user)
-    return displayName
-      .split(' ')
-      .map((name) => name[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2)
-  }
-
-  // Session validation
-  function validateSession() {
-    if (!currentUser.value || !token.value) {
-      return false
+  /**
+   * קבלת הרשאות מינימליות לפי תפקיד
+   */
+  function getMinimalPermissionsByRole(role) {
+    const rolePermissions = {
+      'System Admin': [
+        'viewDashboard',
+        'manageCompanies',
+        'manageSites',
+        'manageHouses',
+        'manageSensors',
+        'manageEvents',
+        'manageReports',
+        'receiveAlerts',
+        'manageUsers',
+        'manageSettings',
+        'viewSupport',
+      ],
+      'User Manager': ['manageUsers', 'viewReports', 'viewSupport'],
+      'Companies Manager': [
+        'viewDashboard',
+        'viewCompanies',
+        'updateCompanies',
+        'manageSites',
+        'manageHouses',
+        'manageSensors',
+        'manageUsers',
+        'viewEvents',
+        'viewReports',
+        'receiveAlerts',
+        'viewSupport',
+      ],
+      'Sites Manager': [
+        'viewDashboard',
+        'viewSites',
+        'manageHouses',
+        'manageSensors',
+        'manageUsers',
+        'viewEvents',
+        'viewReports',
+        'receiveAlerts',
+        'viewSupport',
+      ],
+      'House Manager': [
+        'viewDashboard',
+        'viewHouses',
+        'updateHouses',
+        'manageSensors',
+        'manageUsers',
+        'viewEvents',
+        'viewReports',
+        'receiveAlerts',
+        'viewSupport',
+      ],
+      Caregiver: ['viewDashboard', 'viewHouses', 'viewEvents', 'receiveAlerts'],
+      'Family Manager': [
+        'viewDashboard',
+        'viewHouses',
+        'updateHouses',
+        'manageSensors',
+        'viewReports',
+        'viewEvents',
+        'receiveAlerts',
+      ],
+      'Family Member': [
+        'viewDashboard',
+        'viewHouses',
+        'viewSensors',
+        'viewReports',
+        'viewEvents',
+        'receiveAlerts',
+      ],
     }
 
-    // Check if password has expired
-    if (isPasswordExpired()) {
-      logout()
-      return false
-    }
-
-    return true
+    return rolePermissions[role] || ['viewDashboard']
   }
 
-  // Clear any stored errors
+  /**
+   * איפוס שגיאות
+   */
   function clearError() {
     error.value = null
   }
 
-  // Get user avatar URL
-  function getUserAvatarUrl(user = null) {
-    const targetUser = user || currentUser.value
-    if (!targetUser) return null
+  /**
+   * בדיקת תוקף הפעלה
+   */
+  function isSessionValid() {
+    if (!sessionInfo.value) return false
 
-    // If user has a custom avatar
-    if (targetUser.avatar) {
-      return targetUser.avatar
-    }
+    const now = new Date()
+    const expiresAt = sessionInfo.value.expiresAt ? new Date(sessionInfo.value.expiresAt) : null
 
-    // Generate default avatar
-    const name = getUserDisplayName(targetUser)
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`
+    return !expiresAt || now < expiresAt
   }
 
+  /**
+   * רענון הפעלה
+   */
+  async function refreshSession() {
+    if (!isAuthenticated.value) return false
+
+    try {
+      // בדיקת תוקף טוקן והחלפתו אם נדרש
+      const userData = await authApi.getCurrentUser()
+      if (!userData) {
+        await logout()
+        return false
+      }
+
+      currentUser.value = userData
+      await loadPermissions()
+      await loadHierarchyMappings()
+
+      return true
+    } catch (err) {
+      console.error('Error refreshing session:', err)
+      await logout()
+      return false
+    }
+  }
+
+  // Initialize - try to load user from stored token
+  if (token.value) {
+    loadCurrentUser().catch(() => {
+      // אם טעינת המשתמש נכשלת, נקה הכל
+      token.value = null
+      localStorage.removeItem('session_token')
+    })
+  }
+
+  // Return store interface
   return {
     // State
     currentUser,
@@ -357,39 +596,44 @@ export const useUserStore = defineStore('user', () => {
     error,
     permissions,
     sessionInfo,
+    hierarchyMappings,
 
     // Computed
     isAuthenticated,
     isAdmin,
     isUserManager,
+    isCompaniesManager,
+    isSitesManager,
+    isHouseManager,
+    isFamilyManager,
     canManageUsers,
+    canManageCompanies,
+    canManageSites,
+    canManageHouses,
+    canManageSensors,
+    userHierarchyLevel,
 
-    // Core methods
+    // Actions
     login,
     logout,
     loadCurrentUser,
-    hasPermission,
     updateUserProfile,
-    clearError,
-
-    // User management permissions
+    loadPermissions,
+    loadHierarchyMappings,
+    hasPermission,
+    hasPermissionAdvanced,
     canCreateUser,
     canEditUser,
     canDeleteUser,
     canAssignRole,
-    canManageHouseAssignments,
-    canManagePermissions,
-
-    // Password and session management
+    getAccessibleCompanies,
+    getAccessibleHouses,
+    hasResourceAccess,
+    validateUserCreation,
     checkPasswordExpiry,
     extendPasswordExpiry,
-    isPasswordExpiringSoon,
-    isPasswordExpired,
-    validateSession,
-
-    // Utility methods
-    getUserDisplayName,
-    getUserInitials,
-    getUserAvatarUrl,
+    clearError,
+    isSessionValid,
+    refreshSession,
   }
 })
