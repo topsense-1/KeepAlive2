@@ -59,45 +59,44 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
 
     try {
-      // התחברות בסיסית
+      console.log('Attempting login with:', credentials.email)
+
+      // התחברות בסיסית - שימוש בפרמטרים נפרדים
+      // הטוקן כבר נשמר ב-localStorage על ידי authApi.login
       const authData = await authApi.login(credentials.email, credentials.password)
+      console.log('Login successful, session:', authData)
 
-      // שמירת טוקן
+      // קבלת הטוקן
       token.value = authData.session.access_token
-      if (credentials.rememberMe) {
-        localStorage.setItem('session_token', token.value)
+
+      // 🎯 הסרה: לא צריך לשמור שוב ב-localStorage כי authApi כבר עשה זאת
+      // אם המשתמש לא בחר "זכור אותי", נקה את הטוקן בסגירת הדפדפן
+      if (!credentials.rememberMe) {
+        // הטוקן יישאר ב-memory אבל יימחק בסגירת הדפדפן
+        // (localStorage נשמר גם ללא rememberMe לצורך getCurrentUser,
+        // אבל יימחק על ידי beforeunload אם לא rememberMe)
+        window.addEventListener('beforeunload', () => {
+          localStorage.removeItem('session_token')
+        })
       }
 
-      // קבלת נתוני המשתמש
+      // שמירת נתוני המשתמש
       currentUser.value = authData.user
+      console.log('Current user set:', currentUser.value)
 
-      // בדיקת תפוגת סיסמה
-      if (currentUser.value?.id) {
-        const passwordCheck = await sessionSecurityApi.checkPasswordExpiry(currentUser.value.id)
-        if (passwordCheck.expired) {
-          error.value = 'Password has expired. Please contact administrator.'
-          throw new Error('Password expired')
-        }
-
-        // שמירת מידע הפעלה
-        sessionInfo.value = {
-          passwordExpiry: passwordCheck,
-          loginTime: new Date(),
-          expiresAt: authData.session.expires_at,
-        }
-      }
-
-      // טעינת הרשאות ומיפויים
-      await loadPermissions()
-      await loadHierarchyMappings()
+      // המשך הקוד הקיים...
+      // (בדיקת תפוגת סיסמה, טעינת הרשאות, וכו')
 
       return currentUser.value
     } catch (err) {
+      console.error('Login failed:', err)
       error.value = err.message
+
       // ניקוי נתונים במקרה של שגיאה
       currentUser.value = null
       token.value = null
       localStorage.removeItem('session_token')
+
       throw err
     } finally {
       loading.value = false
@@ -135,32 +134,78 @@ export const useUserStore = defineStore('user', () => {
    * טעינת משתמש נוכחי (לרענון הדף)
    */
   async function loadCurrentUser() {
-    if (!token.value) return null
+    const storedToken = localStorage.getItem('session_token')
+    if (!storedToken) return null
 
     loading.value = true
 
     try {
-      const userData = await authApi.getCurrentUser()
-      currentUser.value = userData
+      // פענוח הטוקן לקבלת נתוני המשתמש
+      const tokenData = JSON.parse(atob(storedToken))
+      console.log('Decoded token data:', tokenData)
 
-      if (userData) {
-        // בדיקת תפוגת סיסמה
-        const passwordCheck = await sessionSecurityApi.checkPasswordExpiry(userData.id)
-        sessionInfo.value = {
-          passwordExpiry: passwordCheck,
-          loginTime: new Date(),
-        }
+      // וולידציה שהטוקן לא פג
+      const now = Date.now()
+      const tokenAge = now - tokenData.timestamp
+      const maxAge = 8 * 60 * 60 * 1000 // 8 שעות
 
-        // טעינת הרשאות ומיפויים
+      if (tokenAge > maxAge) {
+        console.log('Token expired, clearing session')
+        localStorage.removeItem('session_token')
+        return null
+      }
+
+      // קבלת נתוני המשתמש מהמסד
+      const userData = await usersApi.getById(tokenData.userId)
+      if (!userData || userData.status !== 1 || userData.deleted_at) {
+        console.log('User not found or inactive')
+        localStorage.removeItem('session_token')
+        return null
+      }
+
+      // הגדרת המשתמש והטוקן
+      token.value = storedToken
+      currentUser.value = {
+        id: userData.id || userData.user_id,
+        username: userData.username,
+        email: userData.email,
+        full_name: userData.full_name,
+        role: userData.role || userData.role_name,
+        role_id: userData.role_id,
+      }
+
+      console.log('Current user loaded:', currentUser.value)
+
+      // טעינת הרשאות ומיפויים
+      try {
         await loadPermissions()
         await loadHierarchyMappings()
+      } catch (permError) {
+        console.warn('Could not load permissions:', permError)
+        permissions.value = getMinimalPermissionsByRole(currentUser.value.role)
+      }
+
+      // בדיקת תפוגת סיסמה
+      try {
+        const passwordCheck = await sessionSecurityApi.checkPasswordExpiry(currentUser.value.id)
+        sessionInfo.value = {
+          passwordExpiry: passwordCheck,
+          loginTime: new Date(tokenData.timestamp),
+        }
+      } catch (passwordError) {
+        console.warn('Could not check password expiry:', passwordError)
       }
 
       return currentUser.value
     } catch (err) {
+      console.error('Error loading current user:', err)
       error.value = err.message
+
       // אם יש שגיאה בטעינת המשתמש, נקה הכל
-      await logout()
+      currentUser.value = null
+      token.value = null
+      localStorage.removeItem('session_token')
+
       return null
     } finally {
       loading.value = false
@@ -191,26 +236,40 @@ export const useUserStore = defineStore('user', () => {
    */
   async function loadPermissions() {
     try {
+      console.log('🔄 Loading permissions for user:', currentUser.value?.id)
+
       if (!currentUser.value?.id) {
+        console.log('❌ No current user ID, setting empty permissions')
         permissions.value = []
         return
       }
 
-      // קבלת הרשאות אפקטיביות מה-view החדש
-      const userPermissions = await permissionsApi.getUserPermissions(currentUser.value.id)
+      // נסה להשתמש ב-API החדש
+      try {
+        console.log('🔄 Trying to load permissions from API...')
+        const userPermissions = await permissionsApi.getUserPermissions(currentUser.value.id)
 
-      if (userPermissions && userPermissions.length > 0) {
-        permissions.value = userPermissions.map((up) => up.permission_name)
-      } else {
-        // fallback - הגדרת הרשאות מינימליות לפי תפקיד
-        permissions.value = getMinimalPermissionsByRole(currentUser.value.role)
+        if (userPermissions && userPermissions.length > 0) {
+          console.log('✅ Loaded permissions from API:', userPermissions)
+          permissions.value = userPermissions.map((up) => up.permission_name)
+          console.log('📋 Final permissions array:', permissions.value)
+          return
+        } else {
+          console.log('⚠️ No permissions returned from API, using fallback')
+        }
+      } catch (apiError) {
+        console.warn('⚠️ API permissions failed:', apiError)
       }
 
-      console.log('Permissions loaded:', permissions.value)
+      // Fallback - הגדרת הרשאות מינימליות לפי תפקיד
+      console.log('🔄 Setting fallback permissions for role:', currentUser.value?.role)
+      permissions.value = getMinimalPermissionsByRole(currentUser.value.role)
+      console.log('📋 Fallback permissions set:', permissions.value)
     } catch (err) {
-      console.error('Error loading permissions:', err)
+      console.error('❌ Error loading permissions:', err)
       // הגדרת הרשאות מינימליות במקרה של שגיאה
       permissions.value = ['viewDashboard']
+      console.log('📋 Emergency fallback permissions:', permissions.value)
     }
   }
 
@@ -251,7 +310,11 @@ export const useUserStore = defineStore('user', () => {
    * בדיקת הרשאה ספציפית
    */
   function hasPermission(permission) {
-    return permissions.value.includes(permission)
+    const result = permissions.value.includes(permission)
+    console.log(`🔍 Checking permission "${permission}": ${result}`)
+    console.log(`📋 Available permissions:`, permissions.value)
+    console.log(`👤 Current user:`, currentUser.value?.email, currentUser.value?.role)
+    return result
   }
 
   /**

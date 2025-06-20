@@ -76,7 +76,6 @@ export const authApi = {
       // איפוס ניסיונות כושלים
       await sendCommand('users', `filter=id=="${user.id}"`, 'PATCH', {
         failed_login_attempts: 0,
-        //locked_until: null,
         last_sign_in_at: new Date().toISOString(),
       })
 
@@ -89,6 +88,10 @@ export const authApi = {
           timestamp: Date.now(),
         }),
       )
+
+      // 🎯 הוספה חשובה: שמירת הטוקן ב-localStorage
+      localStorage.setItem('session_token', sessionToken)
+      console.log('Token saved to localStorage:', sessionToken)
 
       return {
         user: {
@@ -112,30 +115,83 @@ export const authApi = {
 
   async getCurrentUser() {
     try {
-      // בפועל זה יקרא את הטוקן ויחזיר את פרטי המשתמש
+      // בדיקת קיום טוקן
       const token = localStorage.getItem('session_token')
-      if (!token) return null
+      if (!token) {
+        console.log('No session token found')
+        return null
+      }
 
+      // פענוח הטוקן
       const session = JSON.parse(atob(token))
+      console.log('Decoded session from token:', session)
+
+      // וולידציה שהטוקן לא פג (8 שעות)
+      const now = Date.now()
+      const tokenAge = now - session.timestamp
+      const maxAge = 8 * 60 * 60 * 1000 // 8 שעות
+
+      if (tokenAge > maxAge) {
+        console.log('Token expired, clearing session')
+        localStorage.removeItem('session_token')
+        return null
+      }
+
+      // קבלת נתוני המשתמש מהמסד
       const userResult = await sendCommand(
         'users',
-        `filter=id=="${session.userId}"&fields=id,username,email,full_name,role,role_id,status`,
+        `filter=id=="${session.userId}" and status==true&fields=id,username,email,full_name,role,role_id,status`,
       )
 
-      return Array.isArray(userResult) && userResult.length > 0 ? userResult[0] : null
+      if (!Array.isArray(userResult) || userResult.length === 0) {
+        console.log('User not found or inactive:', session.userId)
+        localStorage.removeItem('session_token')
+        return null
+      }
+
+      const user = userResult[0]
+      console.log('User data loaded from database:', user)
+
+      return {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        role_id: user.role_id,
+      }
     } catch (error) {
-      console.error('Get current user error:', error)
+      console.error('Error getting current user:', error)
+      localStorage.removeItem('session_token')
       return null
     }
   },
 
   async logout() {
-    localStorage.removeItem('session_token')
-    return { success: true }
+    try {
+      // ניקוי הטוקן מ-localStorage
+      localStorage.removeItem('session_token')
+      console.log('Session token removed from localStorage')
+
+      return { success: true }
+    } catch (error) {
+      console.error('Logout error:', error)
+      // גם אם יש שגיאה, נקה את הטוקן
+      localStorage.removeItem('session_token')
+      return { success: false, error: error.message }
+    }
   },
 
   async isAuthenticated() {
-    return !!localStorage.getItem('session_token')
+    try {
+      const user = await this.getCurrentUser()
+      const isAuth = !!user
+      console.log('Is authenticated:', isAuth)
+      return isAuth
+    } catch (error) {
+      console.error('Error checking authentication:', error)
+      return false
+    }
   },
 
   async getUserRole() {

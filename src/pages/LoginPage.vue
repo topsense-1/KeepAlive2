@@ -86,11 +86,13 @@ import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { authApi } from '../services/db2rest'
 import { permissionsService } from '../services/permissionsService'
+import { useUserStore } from '../stores/user'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const $q = useQuasar()
+const userStore = useUserStore()
 
 // שדות הטופס
 const email = ref('')
@@ -131,21 +133,27 @@ const onSubmit = async () => {
   try {
     console.log('Login attempt:', email.value)
 
-    // שימוש ב-authApi עם העברת דגל rememberMe
-    const userData = await authApi.login(email.value, password.value, rememberMe.value)
+    // התחברות דרך user store
+    await userStore.login({
+      email: email.value,
+      password: password.value,
+      rememberMe: rememberMe.value,
+    })
 
-    console.log('Login successful, session:', userData)
-    //console.log('Login successful, session:', userData.session)
+    console.log('Login successful through user store')
 
-    // אופציונלי: בדיקת הפרופיל והתפקיד
-    const currentUser = await authApi.getCurrentUser()
-    //console.log('User loaded:', currentUser)
-    //console.log('User role:', currentUser?.role)
-
-    // בדיקת הרשאות בסיסית
-    if (currentUser?.role) {
-      const adminPermissions = await permissionsService.getCurrentUserPermissions()
-      console.log('User permissions:', adminPermissions)
+    // אופציונלי: בדיקת הרשאות (אם באמת נחוץ)
+    if (userStore.currentUser?.id) {
+      try {
+        // שימוש בפונקציה החדשה מה-permissionsService
+        const userPermissions = await permissionsService.getUserEffectivePermissions(
+          userStore.currentUser.id,
+        )
+        console.log('User permissions:', userPermissions)
+      } catch (permError) {
+        console.warn('Could not load permissions on login:', permError)
+        // אל תבלוק את ההתחברות בגלל זה
+      }
     }
 
     // בדיקה אם יש ניתוב מחדש מהפרמטרים
